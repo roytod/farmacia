@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Turnos</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .sync-indicator {
+            text-align: center;
+            padding: 10px;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            animation: pulse 2s infinite;
+        }
+
+        .sync-indicator.syncing {
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .setup-section {
+            margin-bottom: 30px;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-30px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input[type="number"],
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .participants-inputs {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-start {
+            width: 100%;
+            margin-top: 20px;
+            font-size: 18px;
+            padding: 18px;
+        }
+
+        .turn-system {
+            display: none;
+        }
+
+        .turn-system.active {
+            display: block;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        .call-button {
+            width: 100%;
+            font-size: 22px;
+            padding: 25px;
+            margin-bottom: 30px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .participants-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .participant-card {
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            transition: all 0.4s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .participant-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s;
+        }
+
+        .participant-card:hover::before {
+            left: 100%;
+        }
+
+        .participant-card.waiting {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            box-shadow: 0 5px 15px rgba(56, 239, 125, 0.4);
+        }
+
+        .participant-card.attending {
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            color: #333;
+            box-shadow: 0 5px 15px rgba(253, 160, 133, 0.4);
+            transform: scale(1.05);
+        }
+
+        .participant-card.break {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: #999;
+            box-shadow: 0 5px 15px rgba(44, 62, 80, 0.4);
+            opacity: 0.7;
+        }
+
+        .participant-name {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .participant-status {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.9;
+        }
+
+        .participant-position {
+            font-size: 28px;
+            font-weight: 800;
+            margin-top: 10px;
+            opacity: 0.8;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .queue-info {
+            text-align: center;
+            margin-bottom: 25px;
+            padding: 20px;
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+            border-radius: 15px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
+            color: #667eea;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-100%);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 2em;
+            }
+            
+            .participants-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Sistema de Turnos</h1>
+        <div class="sync-indicator" id="syncIndicator">🔄 Sincronizado en tiempo real</div>
+        
+        <div class="setup-section" id="setupSection">
+            <div class="input-group">
+                <label for="numParticipants">Número de Participantes:</label>
+                <input type="number" id="numParticipants" min="1" max="20" value="5">
+            </div>
+            
+            <div class="input-group">
+                <label>Nombres de los Participantes:</label>
+                <div class="participants-inputs" id="participantsInputs"></div>
+            </div>
+            
+            <button class="btn-start" onclick="startSystem()">Iniciar Sistema de Turnos</button>
+        </div>
+        
+        <div class="turn-system" id="turnSystem">
+            <button class="call-button" onclick="callNext()">🔊 Llamar Siguiente Turno</button>
+            
+            <div class="queue-info" id="queueInfo">
+                En espera: <span id="waitingCount">0</span> | 
+                Atendiendo: <span id="attendingCount">0</span> | 
+                En recreo: <span id="breakCount">0</span>
+            </div>
+            
+            <div class="participants-grid" id="participantsGrid"></div>
+            
+            <button class="btn-start" onclick="resetSystem()" style="margin-top: 30px; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">
+                Reiniciar Sistema
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let participants = [];
+        let queue = [];
+        let syncInterval;
+        const STORAGE_KEY = 'turnos-system-data';
+
+        // Generar inputs para nombres
+        document.getElementById('numParticipants').addEventListener('input', function() {
+            const num = parseInt(this.value) || 0;
+            const container = document.getElementById('participantsInputs');
+            container.innerHTML = '';
+            
+            for (let i = 0; i < num; i++) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = `Participante ${i + 1}`;
+                input.value = `Participante ${i + 1}`;
+                input.id = `participant-${i}`;
+                container.appendChild(input);
+            }
+        });
+
+        // Cargar datos compartidos al iniciar
+        async function loadSharedData() {
+            try {
+                const result = await window.storage.get(STORAGE_KEY, true);
+                if (result && result.value) {
+                    const data = JSON.parse(result.value);
+                    participants = data.participants || [];
+                    queue = data.queue || [];
+                    
+                    if (participants.length > 0) {
+                        document.getElementById('setupSection').style.display = 'none';
+                        document.getElementById('turnSystem').classList.add('active');
+                        renderParticipants();
+                    }
+                }
+            } catch (error) {
+                console.log('No hay datos previos o error al cargar:', error);
+            }
+        }
+
+        // Guardar datos compartidos
+        async function saveSharedData() {
+            try {
+                setSyncIndicator(true);
+                const data = {
+                    participants: participants,
+                    queue: queue,
+                    timestamp: Date.now()
+                };
+                await window.storage.set(STORAGE_KEY, JSON.stringify(data), true);
+                setSyncIndicator(false);
+            } catch (error) {
+                console.error('Error al guardar datos:', error);
+                setSyncIndicator(false);
+            }
+        }
+
+        // Indicador de sincronización
+        function setSyncIndicator(syncing) {
+            const indicator = document.getElementById('syncIndicator');
+            if (syncing) {
+                indicator.classList.add('syncing');
+                indicator.textContent = '⏳ Sincronizando...';
+            } else {
+                indicator.classList.remove('syncing');
+                indicator.textContent = '✅ Sincronizado en tiempo real';
+            }
+        }
+
+        // Sincronizar periódicamente
+        function startSync() {
+            syncInterval = setInterval(async () => {
+                try {
+                    const result = await window.storage.get(STORAGE_KEY, true);
+                    if (result && result.value) {
+                        const data = JSON.parse(result.value);
+                        // Solo actualizar si hay cambios
+                        if (JSON.stringify(data.participants) !== JSON.stringify(participants) ||
+                            JSON.stringify(data.queue) !== JSON.stringify(queue)) {
+                            participants = data.participants || [];
+                            queue = data.queue || [];
+                            renderParticipants();
+                        }
+                    }
+                } catch (error) {
+                    console.log('Error al sincronizar:', error);
+                }
+            }, 2000); // Sincronizar cada 2 segundos
+        }
+
+        function stopSync() {
+            if (syncInterval) {
+                clearInterval(syncInterval);
+            }
+        }
+
+        // Inicializar con 5 participantes por defecto
+        document.getElementById('numParticipants').dispatchEvent(new Event('input'));
+
+        async function startSystem() {
+            const num = parseInt(document.getElementById('numParticipants').value);
+            participants = [];
+            queue = [];
+            
+            for (let i = 0; i < num; i++) {
+                const name = document.getElementById(`participant-${i}`).value || `Participante ${i + 1}`;
+                participants.push({
+                    id: i,
+                    name: name,
+                    status: 'waiting'
+                });
+                queue.push(i);
+            }
+            
+            await saveSharedData();
+            document.getElementById('setupSection').style.display = 'none';
+            document.getElementById('turnSystem').classList.add('active');
+            renderParticipants();
+            startSync();
+        }
+
+        function renderParticipants() {
+            const grid = document.getElementById('participantsGrid');
+            grid.innerHTML = '';
+            
+            participants.forEach((p, index) => {
+                const card = document.createElement('div');
+                card.className = `participant-card ${p.status}`;
+                
+                let statusText = '';
+                let position = '';
+                
+                if (p.status === 'waiting') {
+                    const queuePos = queue.indexOf(p.id) + 1;
+                    statusText = 'En Espera';
+                    position = `<div class="participant-position">#${queuePos}</div>`;
+                } else if (p.status === 'attending') {
+                    statusText = 'Atendiendo';
+                } else {
+                    statusText = 'En Recreo';
+                }
+                
+                card.innerHTML = `
+                    <div class="participant-name">${p.name}</div>
+                    <div class="participant-status">${statusText}</div>
+                    ${position}
+                    <div class="controls">
+                        ${p.status !== 'attending' ? `<button class="btn-small" onclick="setAttending(${p.id})">Atender</button>` : ''}
+                        ${p.status !== 'break' ? `<button class="btn-small" onclick="setBreak(${p.id})">Recreo</button>` : ''}
+                        ${p.status !== 'waiting' ? `<button class="btn-small" onclick="setWaiting(${p.id})">A Fila</button>` : ''}
+                    </div>
+                `;
+                
+                grid.appendChild(card);
+            });
+            
+            updateQueueInfo();
+        }
+
+        function updateQueueInfo() {
+            const waiting = participants.filter(p => p.status === 'waiting').length;
+            const attending = participants.filter(p => p.status === 'attending').length;
+            const onBreak = participants.filter(p => p.status === 'break').length;
+            
+            document.getElementById('waitingCount').textContent = waiting;
+            document.getElementById('attendingCount').textContent = attending;
+            document.getElementById('breakCount').textContent = onBreak;
+        }
+
+        function callNext() {
+            if (queue.length === 0) {
+                speak('No hay participantes en la fila');
+                return;
+            }
+            
+            const nextId = queue[0];
+            const participant = participants[nextId];
+            
+            speak(`Siguiente turno: ${participant.name}`);
+        }
+
+        async function setAttending(id) {
+            const participant = participants[id];
+            
+            if (participant.status === 'waiting') {
+                const index = queue.indexOf(id);
+                if (index > -1) queue.splice(index, 1);
+            }
+            
+            participant.status = 'attending';
+            await saveSharedData();
+            renderParticipants();
+        }
+
+        async function setBreak(id) {
+            const participant = participants[id];
+            
+            if (participant.status === 'waiting') {
+                const index = queue.indexOf(id);
+                if (index > -1) queue.splice(index, 1);
+            }
+            
+            participant.status = 'break';
+            await saveSharedData();
+            renderParticipants();
+        }
+
+        async function setWaiting(id) {
+            const participant = participants[id];
+            participant.status = 'waiting';
+            
+            if (!queue.includes(id)) {
+                queue.push(id);
+            }
+            
+            await saveSharedData();
+            renderParticipants();
+        }
+
+        function speak(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                
+                setTimeout(() => {
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'es-ES';
+                    utterance.rate = 0.9;
+                    utterance.pitch = 1;
+                    utterance.volume = 1;
+                    
+                    utterance.onerror = function(event) {
+                        console.error('Error en síntesis de voz:', event);
+                        showNotification(text);
+                    };
+                    
+                    utterance.onend = function() {
+                        console.log('Síntesis completada');
+                    };
+                    
+                    window.speechSynthesis.speak(utterance);
+                    showNotification(text);
+                }, 100);
+            } else {
+                showNotification(text);
+            }
+        }
+        
+        function showNotification(text) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 20px 40px;
+                border-radius: 15px;
+                font-size: 24px;
+                font-weight: 700;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+                z-index: 1000;
+                animation: slideDown 0.5s ease-out;
+            `;
+            notification.textContent = text;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideUp 0.5s ease-out';
+                setTimeout(() => notification.remove(), 500);
+            }, 3000);
+        }
+
+        async function resetSystem() {
+            if (confirm('¿Estás seguro de reiniciar el sistema? Esto afectará a todos los dispositivos conectados.')) {
+                stopSync();
+                try {
+                    await window.storage.delete(STORAGE_KEY, true);
+                } catch (error) {
+                    console.log('Error al eliminar datos:', error);
+                }
+                document.getElementById('setupSection').style.display = 'block';
+                document.getElementById('turnSystem').classList.remove('active');
+                participants = [];
+                queue = [];
+            }
+        }
+
+        // Cargar datos al iniciar la página
+        loadSharedData();
+        startSync();
+
+        // Detener sincronización al cerrar
+        window.addEventListener('beforeunload', stopSync);
+    </script>
+</body>
+</html>
