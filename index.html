@@ -59,6 +59,10 @@
             background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
         }
 
+        .sync-indicator.error {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        }
+
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.7; }
@@ -128,6 +132,12 @@
 
         button:active {
             transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
         }
 
         .btn-start {
@@ -249,11 +259,32 @@
             color: #333;
         }
 
-        .loading {
-            text-align: center;
+        .firebase-config {
+            background: #f8f9fa;
             padding: 20px;
-            font-size: 18px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 2px solid #e9ecef;
+        }
+
+        .firebase-config h3 {
             color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .firebase-config p {
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        .error-message {
+            background: #ffe6e6;
+            color: #c0392b;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            border: 2px solid #e74c3c;
         }
 
         @keyframes slideDown {
@@ -296,9 +327,20 @@
 <body>
     <div class="container">
         <h1>🎯 Sistema de Turnos</h1>
-        <div class="sync-indicator" id="syncIndicator">🔄 Sincronizado en tiempo real</div>
+        <div class="sync-indicator" id="syncIndicator">⏳ Listo para conectar</div>
         
-        <div class="setup-section" id="setupSection">
+        <div class="firebase-config" id="firebaseConfig">
+            <h3>📝 Configuración Firebase</h3>
+            <p>Ingresa la URL de tu Firebase Realtime Database:</p>
+            <div class="input-group">
+                <label>Database URL:</label>
+                <input type="text" id="firebaseUrl" placeholder="https://tu-proyecto.firebaseio.com" value="https://farmacia-65cae-default-rtdb.firebaseio.com/">
+            </div>
+            <button onclick="connectToFirebase()" id="connectBtn">Conectar a Firebase</button>
+            <div id="errorMessage" style="display: none;" class="error-message"></div>
+        </div>
+        
+        <div class="setup-section" id="setupSection" style="display: none;">
             <div class="input-group">
                 <label for="numParticipants">Número de Participantes:</label>
                 <input type="number" id="numParticipants" min="1" max="20" value="5">
@@ -313,7 +355,7 @@
         </div>
         
         <div class="turn-system" id="turnSystem">
-            <button class="call-button" onclick="callNext()">🔊 Llamar Siguiente Turno</button>
+            <button class="call-button" onclick="callNext()">📊 Llamar Siguiente Turno</button>
             
             <div class="queue-info" id="queueInfo">
                 En espera: <span id="waitingCount">0</span> | 
@@ -329,15 +371,129 @@
         </div>
     </div>
 
+    <!-- Firebase SDK v9 (Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
     <script>
+        let db;
+        let dataRef;
         let participants = [];
         let queue = [];
-        let syncInterval;
-        const STORAGE_KEY = 'turnos-system-data';
+        let isConnected = false;
 
-        // Generar inputs para nombres
-        document.getElementById('numParticipants').addEventListener('input', function() {
-            const num = parseInt(this.value) || 0;
+        function setSyncIndicator(status, message) {
+            const indicator = document.getElementById('syncIndicator');
+            indicator.className = 'sync-indicator';
+            
+            switch(status) {
+                case 'connecting':
+                    indicator.textContent = '🔄 ' + (message || 'Conectando a Firebase...');
+                    indicator.classList.add('syncing');
+                    break;
+                case 'connected':
+                    indicator.textContent = '✅ ' + (message || 'Conectado a Firebase');
+                    break;
+                case 'synced':
+                    indicator.textContent = '✅ Sincronizado en tiempo real';
+                    break;
+                case 'syncing':
+                    indicator.textContent = '⏳ Sincronizando...';
+                    indicator.classList.add('syncing');
+                    break;
+                case 'error':
+                    indicator.textContent = '❌ ' + (message || 'Error de conexión');
+                    indicator.classList.add('error');
+                    break;
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = '❌ ' + message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function connectToFirebase() {
+            const url = document.getElementById('firebaseUrl').value.trim();
+            const connectBtn = document.getElementById('connectBtn');
+            
+            if (!url) {
+                showError('Por favor ingresa la URL de Firebase');
+                return;
+            }
+
+            // Validar formato de URL
+            if (!url.includes('firebaseio.com')) {
+                showError('URL inválida. Debe ser una URL de Firebase Realtime Database');
+                return;
+            }
+
+            connectBtn.disabled = true;
+            setSyncIndicator('connecting', 'Conectando...');
+
+            try {
+                const firebaseConfig = {
+                    databaseURL: url
+                };
+
+                // Inicializar Firebase
+                const app = firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+                dataRef = db.ref('turnos-system');
+
+                // Escuchar cambios en tiempo real
+                dataRef.on('value', 
+                    (snapshot) => {
+                        const data = snapshot.val();
+                        if (data) {
+                            participants = data.participants || [];
+                            queue = data.queue || [];
+                            
+                            if (participants.length > 0) {
+                                document.getElementById('setupSection').style.display = 'none';
+                                document.getElementById('turnSystem').classList.add('active');
+                                renderParticipants();
+                            }
+                        }
+                        
+                        if (!isConnected) {
+                            isConnected = true;
+                            setSyncIndicator('connected', 'Conectado exitosamente');
+                            document.getElementById('firebaseConfig').style.display = 'none';
+                            document.getElementById('setupSection').style.display = 'block';
+                            generateParticipantInputs();
+                        } else {
+                            setSyncIndicator('synced');
+                        }
+                    },
+                    (error) => {
+                        console.error('Error Firebase:', error);
+                        connectBtn.disabled = false;
+                        
+                        let errorMsg = 'Error de conexión';
+                        if (error.code === 'PERMISSION_DENIED') {
+                            errorMsg = 'Permiso denegado. Verifica las reglas de seguridad en Firebase';
+                        }
+                        
+                        setSyncIndicator('error', errorMsg);
+                        showError(errorMsg + '. Verifica tu configuración.');
+                    }
+                );
+
+            } catch (error) {
+                console.error('Error al inicializar Firebase:', error);
+                connectBtn.disabled = false;
+                setSyncIndicator('error', 'Error al conectar');
+                showError('Error al inicializar Firebase: ' + error.message);
+            }
+        }
+
+        function generateParticipantInputs() {
+            const num = parseInt(document.getElementById('numParticipants').value) || 5;
             const container = document.getElementById('participantsInputs');
             container.innerHTML = '';
             
@@ -349,86 +505,29 @@
                 input.id = `participant-${i}`;
                 container.appendChild(input);
             }
-        });
-
-        // Cargar datos compartidos al iniciar
-        async function loadSharedData() {
-            try {
-                const result = await window.storage.get(STORAGE_KEY, true);
-                if (result && result.value) {
-                    const data = JSON.parse(result.value);
-                    participants = data.participants || [];
-                    queue = data.queue || [];
-                    
-                    if (participants.length > 0) {
-                        document.getElementById('setupSection').style.display = 'none';
-                        document.getElementById('turnSystem').classList.add('active');
-                        renderParticipants();
-                    }
-                }
-            } catch (error) {
-                console.log('No hay datos previos o error al cargar:', error);
-            }
         }
 
-        // Guardar datos compartidos
-        async function saveSharedData() {
+        document.getElementById('numParticipants').addEventListener('input', generateParticipantInputs);
+
+        async function saveData() {
+            if (!db || !dataRef) {
+                showError('No conectado a Firebase');
+                return;
+            }
+            
             try {
-                setSyncIndicator(true);
-                const data = {
+                setSyncIndicator('syncing');
+                await dataRef.set({
                     participants: participants,
                     queue: queue,
                     timestamp: Date.now()
-                };
-                await window.storage.set(STORAGE_KEY, JSON.stringify(data), true);
-                setSyncIndicator(false);
+                });
             } catch (error) {
-                console.error('Error al guardar datos:', error);
-                setSyncIndicator(false);
+                console.error('Error al guardar:', error);
+                setSyncIndicator('error', 'Error al guardar');
+                showError('Error al guardar los datos');
             }
         }
-
-        // Indicador de sincronización
-        function setSyncIndicator(syncing) {
-            const indicator = document.getElementById('syncIndicator');
-            if (syncing) {
-                indicator.classList.add('syncing');
-                indicator.textContent = '⏳ Sincronizando...';
-            } else {
-                indicator.classList.remove('syncing');
-                indicator.textContent = '✅ Sincronizado en tiempo real';
-            }
-        }
-
-        // Sincronizar periódicamente
-        function startSync() {
-            syncInterval = setInterval(async () => {
-                try {
-                    const result = await window.storage.get(STORAGE_KEY, true);
-                    if (result && result.value) {
-                        const data = JSON.parse(result.value);
-                        // Solo actualizar si hay cambios
-                        if (JSON.stringify(data.participants) !== JSON.stringify(participants) ||
-                            JSON.stringify(data.queue) !== JSON.stringify(queue)) {
-                            participants = data.participants || [];
-                            queue = data.queue || [];
-                            renderParticipants();
-                        }
-                    }
-                } catch (error) {
-                    console.log('Error al sincronizar:', error);
-                }
-            }, 2000); // Sincronizar cada 2 segundos
-        }
-
-        function stopSync() {
-            if (syncInterval) {
-                clearInterval(syncInterval);
-            }
-        }
-
-        // Inicializar con 5 participantes por defecto
-        document.getElementById('numParticipants').dispatchEvent(new Event('input'));
 
         async function startSystem() {
             const num = parseInt(document.getElementById('numParticipants').value);
@@ -436,7 +535,8 @@
             queue = [];
             
             for (let i = 0; i < num; i++) {
-                const name = document.getElementById(`participant-${i}`).value || `Participante ${i + 1}`;
+                const nameInput = document.getElementById(`participant-${i}`);
+                const name = nameInput ? nameInput.value : `Participante ${i + 1}`;
                 participants.push({
                     id: i,
                     name: name,
@@ -445,18 +545,17 @@
                 queue.push(i);
             }
             
-            await saveSharedData();
+            await saveData();
             document.getElementById('setupSection').style.display = 'none';
             document.getElementById('turnSystem').classList.add('active');
             renderParticipants();
-            startSync();
         }
 
         function renderParticipants() {
             const grid = document.getElementById('participantsGrid');
             grid.innerHTML = '';
             
-            participants.forEach((p, index) => {
+            participants.forEach((p) => {
                 const card = document.createElement('div');
                 card.className = `participant-card ${p.status}`;
                 
@@ -521,8 +620,7 @@
             }
             
             participant.status = 'attending';
-            await saveSharedData();
-            renderParticipants();
+            await saveData();
         }
 
         async function setBreak(id) {
@@ -534,8 +632,7 @@
             }
             
             participant.status = 'break';
-            await saveSharedData();
-            renderParticipants();
+            await saveData();
         }
 
         async function setWaiting(id) {
@@ -546,8 +643,7 @@
                 queue.push(id);
             }
             
-            await saveSharedData();
-            renderParticipants();
+            await saveData();
         }
 
         function speak(text) {
@@ -560,15 +656,6 @@
                     utterance.rate = 0.9;
                     utterance.pitch = 1;
                     utterance.volume = 1;
-                    
-                    utterance.onerror = function(event) {
-                        console.error('Error en síntesis de voz:', event);
-                        showNotification(text);
-                    };
-                    
-                    utterance.onend = function() {
-                        console.log('Síntesis completada');
-                    };
                     
                     window.speechSynthesis.speak(utterance);
                     showNotification(text);
@@ -606,25 +693,15 @@
 
         async function resetSystem() {
             if (confirm('¿Estás seguro de reiniciar el sistema? Esto afectará a todos los dispositivos conectados.')) {
-                stopSync();
                 try {
-                    await window.storage.delete(STORAGE_KEY, true);
+                    await dataRef.remove();
+                    location.reload();
                 } catch (error) {
-                    console.log('Error al eliminar datos:', error);
+                    console.error('Error al reiniciar:', error);
+                    showError('Error al reiniciar el sistema');
                 }
-                document.getElementById('setupSection').style.display = 'block';
-                document.getElementById('turnSystem').classList.remove('active');
-                participants = [];
-                queue = [];
             }
         }
-
-        // Cargar datos al iniciar la página
-        loadSharedData();
-        startSync();
-
-        // Detener sincronización al cerrar
-        window.addEventListener('beforeunload', stopSync);
     </script>
 </body>
 </html>
